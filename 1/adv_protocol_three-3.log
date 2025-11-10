@@ -1,0 +1,5 @@
+{"opcode": 0, "type": "DH"}
+{"opcode": 1, "type": "DH", "public": 367, "parameter": {"p": 449, "g": 163}}
+{"opcode": 1, "type": "DH", "public": 116}
+{"opcode": 2, "type": "AES", "encryption": "DYMcemhPKFKouQI/+qyuww=="}
+{"opcode": 2, "type": "AES", "encryption": "D4VEO5Xqiiy/TuAR3dEccQ=="}
