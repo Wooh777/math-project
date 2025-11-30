@@ -4,6 +4,8 @@ import argparse
 import logging
 import math
 import random
+import matplotlib.pyplot as plt
+
 
 # ====== Feature Engineering & Hyperparameter Candidates ======
 # 최소 2개 이상의 feature set을 정의해서 자동으로 비교
@@ -250,6 +252,7 @@ def _auto_select_best_config(instances, labels):
         "var_smoothing": best_vs,
     }
 
+
 # ====== Public training() required by skeleton ======
 def training(instances, labels):
     """
@@ -355,6 +358,7 @@ def load_raw_data(fname):
     return instances, labels
 
 
+# ====== Main pipeline ======
 def run(train_file, test_file):
     # training phase
     instances, labels = load_raw_data(train_file)
@@ -419,6 +423,9 @@ def main():
     if not os.path.exists(args.testing):
         logging.error("The testing dataset does not exist: {}".format(args.testing))
         sys.exit(1)
+
+    # 재현성 위해 seed 고정 (parameter tuning 시 동일 결과)
+    # random.seed(42)
 
     run(args.training, args.testing)
 
