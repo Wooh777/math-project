@@ -2,6 +2,85 @@ import os
 import sys
 import argparse
 import logging
+import math
+import random
+
+# ====== Feature Engineering & Hyperparameter Candidates ======
+# 최소 2개 이상의 feature set을 정의해서 자동으로 비교
+FEATURE_SETS = {
+    # 모든 센서/피처 사용 (기본)
+    "full": [1, 2, 3, 4, 5, 6, 7],
+    # 비교용: 앞부분 피처만 사용
+    "env_only": [1, 2, 3, 4],
+    # 비교용: 뒤쪽(이벤트/부하 관련) 피처만 사용
+    "event_only": [3, 4, 5, 6, 7],
+}
+
+# 분산에 더해 줄 smoothing 값 후보 (하이퍼파라미터)
+VAR_SMOOTHING_CANDIDATES = [1e-6, 1e-4, 1e-2]
+
+
+# ====== Core Naive Bayes Training (single config) ======
+def _fit_gaussian_nb(instances, labels, feature_indices, var_smoothing):
+    """
+    주어진 feature_indices와 var_smoothing(분산 smoothing) 설정으로
+    Gaussian Naive Bayes 파라미터를 학습하는 함수.
+    """
+    n = len(instances)
+    # if n == 0:
+    #     logging.error("No training data.")
+    #     sys.exit(1)
+
+    # 클래스별 prior P(y)
+    class_counts = {}
+    for y in labels:
+        class_counts[y] = class_counts.get(y, 0) + 1
+
+    priors = {}
+    for y, cnt in class_counts.items():
+        priors[y] = cnt / n
+
+    # 클래스별, 특성별 평균/분산 (Gaussian Naive Bayes)
+    means = {y: {i: 0.0 for i in feature_indices} for y in class_counts.keys()}
+    vars_ = {y: {i: 0.0 for i in feature_indices} for y in class_counts.keys()}
+
+    # 평균 계산
+    for x, y in zip(instances, labels):
+        for i in feature_indices:
+            means[y][i] += float(x[i])
+
+    for y in class_counts.keys():
+        for i in feature_indices:
+            means[y][i] /= class_counts[y]
+
+    # 분산 계산
+    for x, y in zip(instances, labels):
+        for i in feature_indices:
+            diff = float(x[i]) - means[y][i]
+            vars_[y][i] += diff * diff
+
+    for y in class_counts.keys():
+        for i in feature_indices:
+            if class_counts[y] > 1:
+                vars_[y][i] /= class_counts[y] - 1
+            else:
+                vars_[y][i] = 0.0
+
+            # 분산이 0이 되지 않도록 smoothing 추가 (하이퍼파라미터)
+            vars_[y][i] += var_smoothing
+            if vars_[y][i] == 0.0:
+                vars_[y][i] = var_smoothing
+
+    parameters = {
+        "priors": priors,
+        "means": means,
+        "vars": vars_,
+        "feature_indices": feature_indices,
+        "classes": list(class_counts.keys()),
+        "var_smoothing": var_smoothing,
+    }
+
+    return parameters
 
 
 def training(instances, labels):
