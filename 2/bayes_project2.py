@@ -250,54 +250,91 @@ def _auto_select_best_config(instances, labels):
         "var_smoothing": best_vs,
     }
 
-
+# ====== Public training() required by skeleton ======
 def training(instances, labels):
-    pass
+    """
+    Naive Bayes (Gaussian) 학습 함수.
+    - instances: 각 행은 [id(or time), x1, x2, x3, x4, x5, x6, x7] 형태라고 가정
+    - labels: 0 (정상), 1 (이상치)
+
+    여기서는
+    1) 여러 feature set 후보(FEATURE_SETS)와
+    2) 여러 var_smoothing 후보(VAR_SMOOTHING_CANDIDATES)를
+       자동으로 탐색해서 가장 좋은 조합을 찾은 뒤,
+    3) 그 설정으로 전체 training set에 대해 최종 모델을 학습한다.
+    """
+    # 1) 자동 feature / hyperparameter 선택
+    best_config = _auto_select_best_config(instances, labels)
+
+    # 2) 최종 설정으로 full training
+    parameters = _fit_gaussian_nb(
+        instances,
+        labels,
+        best_config["feature_indices"],
+        best_config["var_smoothing"],
+    )
+
+    # 부가 정보 저장 (보고서/설명용)
+    parameters["feature_set_name"] = best_config["feature_set_name"]
+
+    logging.debug("Training done. Priors: %s", parameters["priors"])
+    logging.info(
+        "Final model uses feature_set=%s, var_smoothing=%.0e",
+        parameters["feature_set_name"],
+        parameters["var_smoothing"],
+    )
+    return parameters
+
+
+# ====== Probabilities (Naive Bayes prediction) ======
+def _gaussian_log_pdf(x, mean, var):
+    """가우시안 분포의 로그 확률밀도"""
+    return -0.5 * math.log(2.0 * math.pi * var) - ((x - mean) ** 2) / (2.0 * var)
 
 
 def predict(instance, parameters):
-    pass
+    """
+    하나의 instance에 대해 0 또는 1을 예측.
+    P(y) * Π_i P(x_i | y)를 로그 도메인에서 계산.
+    """
+    priors = parameters["priors"]
+    means = parameters["means"]
+    vars_ = parameters["vars"]
+    feature_indices = parameters["feature_indices"]
+    classes = parameters["classes"]
+
+    best_y = None
+    best_log_prob = -float("inf")
+
+    for y in classes:
+        # log P(y)
+        log_prob = math.log(priors[y])
+
+        # 각 feature에 대해 log P(x_i | y) 더하기
+        for i in feature_indices:
+            x_i = float(instance[i])
+            log_prob += _gaussian_log_pdf(x_i, means[y][i], vars_[y][i])
+
+        if log_prob > best_log_prob:
+            best_log_prob = log_prob
+            best_y = y
+
+    return int(best_y)
 
 
+# ====== Report (루브릭의 Implementation + metrics 확인) ======
 def report(predictions, answers):
-    if len(predictions) != len(answers):
-        logging.error("The lengths of two arguments should be same")
-        sys.exit(1)
-
-    # accuracy
-    correct = 0
-    for idx in range(len(predictions)):
-        if predictions[idx] == answers[idx]:
-            correct += 1
-    accuracy = round(correct / len(answers), 2) * 100
-
-    # precision
-    tp = 0
-    fp = 0
-    for idx in range(len(predictions)):
-        if predictions[idx] == 1:
-            if answers[idx] == 1:
-                tp += 1
-            else:
-                fp += 1
-    precision = round(tp / (tp + fp), 2) * 100
-
-    # recall
-    tp = 0
-    fn = 0
-    for idx in range(len(answers)):
-        if answers[idx] == 1:
-            if predictions[idx] == 1:
-                tp += 1
-            else:
-                fn += 1
-    recall = round(tp / (tp + fn), 2) * 100
+    metrics = compute_metrics(predictions, answers)
+    accuracy = round(metrics["accuracy"], 2) * 100
+    precision = round(metrics["precision"], 2) * 100
+    recall = round(metrics["recall"], 2) * 100
 
     logging.info("accuracy: {}%".format(accuracy))
     logging.info("precision: {}%".format(precision))
     logging.info("recall: {}%".format(recall))
 
 
+# ====== Data Loader ======
 def load_raw_data(fname):
     instances = []
     labels = []
@@ -314,7 +351,7 @@ def load_raw_data(fname):
             tmp[7] = float(tmp[7])
             tmp[8] = int(tmp[8])
             instances.append(tmp[:-1])
-            labels.append(tmp[-1])
+            labels.append(int(tmp[-1]))  # ← 반드시 int로 변환
     return instances, labels
 
 
