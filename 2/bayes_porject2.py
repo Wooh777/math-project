@@ -178,6 +178,79 @@ def _evaluate_config_kfold(instances, labels, feature_indices, var_smoothing, k=
     return acc_sum / k
 
 
+def _plot_tuning_results(results):
+    """
+    results: {feature_name: [(var_smoothing, accuracy), ...]}
+    """
+    # if not HAS_MPL:
+    #     logging.warning("matplotlib is not installed; skip plotting.")
+    #     return
+
+    plt.figure()
+    for feat_name, pairs in results.items():
+        xs = [math.log10(vs) for vs, _ in pairs]
+        ys = [acc for _, acc in pairs]
+        plt.plot(xs, ys, marker="o", label=feat_name)
+
+    plt.xlabel("log10(var_smoothing)")
+    plt.ylabel("Accuracy")
+    plt.title("Naive Bayes Parameter Tuning")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    out_name = "param_tuning.png"
+    plt.savefig(out_name)
+    logging.info("Saved parameter tuning plot to %s", out_name)
+
+
+# ====== Automated Feature & Hyperparameter Selection ======
+def _auto_select_best_config(instances, labels):
+    """
+    여러 feature set과 var_smoothing 후보를 자동으로 탐색하여
+    가장 높은 accuracy를 주는 설정을 선택.
+    (루브릭의 Feature Engineering + Parameter Tuning + Automated selection)
+    """
+    best_acc = -1.0
+    best_feat_name = None
+    best_feat_indices = None
+    best_vs = None
+
+    tuning_results = {}
+
+    for feat_name, feat_indices in FEATURE_SETS.items():
+        tuning_results[feat_name] = []
+        for vs in VAR_SMOOTHING_CANDIDATES:
+            acc = _evaluate_config_kfold(instances, labels, feat_indices, vs, k=5)
+            tuning_results[feat_name].append((vs, acc))
+            logging.info(
+                "[TUNING] feature_set=%s, var_smoothing=%.0e, cv_accuracy=%.3f",
+                feat_name,
+                vs,
+                acc,
+            )
+            if acc > best_acc:
+                best_acc = acc
+                best_feat_name = feat_name
+                best_feat_indices = feat_indices
+                best_vs = vs
+
+    # 그래프 저장 (가능하면)
+    _plot_tuning_results(tuning_results)
+
+    logging.info(
+        "Best config: feature_set=%s, var_smoothing=%.0e, accuracy=%.3f",
+        best_feat_name,
+        best_vs,
+        best_acc,
+    )
+
+    return {
+        "feature_set_name": best_feat_name,
+        "feature_indices": best_feat_indices,
+        "var_smoothing": best_vs,
+    }
+
+
 def training(instances, labels):
     pass
 
