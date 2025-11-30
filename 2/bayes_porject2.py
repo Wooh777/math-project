@@ -83,6 +83,101 @@ def _fit_gaussian_nb(instances, labels, feature_indices, var_smoothing):
     return parameters
 
 
+# ====== Metric 계산 유틸 ======
+def compute_metrics(predictions, answers):
+    # if len(predictions) != len(answers):
+    #     logging.error("The lengths of two arguments should be same")
+    #     sys.exit(1)
+
+    # accuracy
+    correct = 0
+    for idx in range(len(predictions)):
+        if predictions[idx] == answers[idx]:
+            correct += 1
+    accuracy = correct / len(answers) if answers else 0.0
+
+    # precision (positive class = 1)
+    tp = 0
+    fp = 0
+    for idx in range(len(predictions)):
+        if predictions[idx] == 1:
+            if answers[idx] == 1:
+                tp += 1
+            else:
+                fp += 1
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+
+    # recall (positive class = 1)
+    tp = 0
+    fn = 0
+    for idx in range(len(answers)):
+        if answers[idx] == 1:
+            if predictions[idx] == 1:
+                tp += 1
+            else:
+                fn += 1
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+
+    return {
+        "accuracy": accuracy,
+        "precision": precision,
+        "recall": recall,
+    }
+
+
+# ====== K-fold evaluation for parameter tuning ======
+def _evaluate_config_kfold(instances, labels, feature_indices, var_smoothing, k=5):
+    """
+    하나의 (feature set, var_smoothing) 설정에 대해
+    k-fold cross-validation으로 성능(accuracy)을 평가.
+    """
+    n = len(instances)
+    if n < 2:
+        return 0.0
+
+    indices = list(range(n))
+    random.shuffle(indices)
+
+    k = min(k, n)
+    fold_size = n // k
+    if fold_size == 0:
+        # 데이터가 매우 적으면 hold-out 방식
+        train_idx = indices[:-1]
+        test_idx = indices[-1:]
+        train_instances = [instances[i] for i in train_idx]
+        train_labels = [labels[i] for i in train_idx]
+        test_instances = [instances[i] for i in test_idx]
+        test_labels = [labels[i] for i in test_idx]
+
+        params = _fit_gaussian_nb(
+            train_instances, train_labels, feature_indices, var_smoothing
+        )
+        preds = [predict(x, params) for x in test_instances]
+        metric = compute_metrics(preds, test_labels)
+        return metric["accuracy"]
+
+    acc_sum = 0.0
+    for fold in range(k):
+        start = fold * fold_size
+        end = n if fold == k - 1 else (fold + 1) * fold_size
+        test_idx = indices[start:end]
+        train_idx = indices[:start] + indices[end:]
+
+        train_instances = [instances[i] for i in train_idx]
+        train_labels = [labels[i] for i in train_idx]
+        test_instances = [instances[i] for i in test_idx]
+        test_labels = [labels[i] for i in test_idx]
+
+        params = _fit_gaussian_nb(
+            train_instances, train_labels, feature_indices, var_smoothing
+        )
+        preds = [predict(x, params) for x in test_instances]
+        metric = compute_metrics(preds, test_labels)
+        acc_sum += metric["accuracy"]
+
+    return acc_sum / k
+
+
 def training(instances, labels):
     pass
 
